@@ -1,0 +1,18 @@
+# Ignore videos
+static/videos/
+*.mp4
+
+# Ignore model weights
+*.pt
+*.pth
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore virtual environment
+venv/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
