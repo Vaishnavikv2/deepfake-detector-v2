@@ -1,0 +1,9 @@
+<h2>Video Analysis Result</h2>
+<video width="400" controls>
+    <source src="{{ video_url }}" type="video/mp4">
+    Your browser does not support the video tag.
+</video>
+<p>Name: {{ video_info.name }}</p>
+<p>Size: {{ video_info.size }}</p>
+<p>Source: {{ video_info.source }}</p>
+<p>Prediction: {{ video_info.per }}</p>

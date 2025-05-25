@@ -1,85 +1,103 @@
 from flask import Flask, jsonify, render_template, request, redirect, url_for
 import os
-from datetime import datetime
 import json
+from datetime import datetime
 from time import time as current_time
 import importlib
 from werkzeug.utils import secure_filename
-
+from image_detector import run_image_detection
 from audio_detector import classify_audio
 
 app = Flask(__name__)
 
-UPLOAD_FOLDER = 'static/videos'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-# Ensure the upload folder exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Directories
+app.config['UPLOAD_VIDEO_FOLDER'] = 'static/videos'
+app.config['UPLOAD_IMAGE_FOLDER'] = 'static/images'
+app.config['UPLOAD_AUDIO_FOLDER'] = 'static/audios'
+
+# Ensure folders exist
+for folder in [app.config['UPLOAD_VIDEO_FOLDER'], app.config['UPLOAD_IMAGE_FOLDER'], app.config['UPLOAD_AUDIO_FOLDER']]:
+    os.makedirs(folder, exist_ok=True)
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html')  # Buttons for audio, video, image
 
-# Handle file upload and redirect to the result page
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return redirect(request.url)
+# Video Upload
+@app.route('/upload-video', methods=['GET', 'POST'])
+def upload_video():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return redirect(request.url)
 
-    file = request.files['file']
+        file = request.files['file']
+        if file.filename == '':
+            return redirect(request.url)
 
-    if file.filename == '':
-        return redirect(request.url)
+        if file and file.filename.lower().endswith(('.mp4', '.avi', '.mov')):
+            timestamp = int(current_time())
+            filename = f"video_{timestamp}.mp4"
+            save_path = os.path.join(app.config['UPLOAD_VIDEO_FOLDER'], filename)
+            file.save(save_path)
 
-    if file:
-        timestamp = int(current_time())
-        filename = f"uploaded_video_{timestamp}.mp4"
-        video_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(video_path)
+            video_path2 = os.path.join(app.config['UPLOAD_VIDEO_FOLDER'], f"1{filename}")
+            module = importlib.import_module("deepfake_detector")
+            result = getattr(module, "run")(save_path, video_path2)
 
-        video_path2 = os.path.join(app.config['UPLOAD_FOLDER'], "1" + filename)
+            video_info = {
+                'name': file.filename,
+                'size': f"{os.path.getsize(save_path) / 1024:.2f} KB",
+                'source': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC'),
+                'per': result
+            }
+            return render_template('video_result.html', video_url=video_path2, video_info=video_info)
+        else:
+            return "Unsupported video type", 400
+    return render_template('upload_video_form.html')
 
-        module = importlib.import_module("deepfake_detector")
-        function = getattr(module, "run")
+# Image Upload
+@app.route('/upload-image', methods=['GET', 'POST'])
+def upload_image():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return redirect(request.url)
 
-        result_from_det = function(video_path ,video_path2)
-        print(result_from_det)
+        file = request.files['file']
+        if file.filename == '':
+            return redirect(request.url)
 
-        # Get video information
-        video_info = {
-            'name': file.filename,
-            'size': f"{os.path.getsize(video_path) / (1024):.2f} KB",
-            'user': 'Guest', 
-            'source': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC'),
-            'per': result_from_det
-        }
+        if file and file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+            filename = secure_filename(file.filename)
+            save_path = os.path.join(app.config['UPLOAD_IMAGE_FOLDER'], filename)
+            file.save(save_path)
 
-        video_info_json = json.dumps(video_info)
+            results = run_image_detection([save_path], app.config['UPLOAD_IMAGE_FOLDER'])
+            return render_template('image_result.html', image_url=save_path, detection=results[filename])
+        else:
+            return "Unsupported image type", 400
+    return render_template('upload_image_form.html')
 
-        # Redirect to the result page with the video information
-        return redirect(url_for('result', video_info=video_info_json, video_path2=video_path2))
+# Audio Upload
+@app.route('/upload-audio', methods=['GET', 'POST'])
+def upload_audio():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return redirect(request.url)
 
-@app.route('/result')
-def result():
-    video_info_json = request.args.get('video_info')
-    video_path2 = request.args.get('video_path2')  
-    print(video_path2)
+        file = request.files['file']
+        if file.filename == '':
+            return redirect(request.url)
 
-    video_info = json.loads(video_info_json)
-    print(video_info['name'])
+        if file and file.filename.lower().endswith(('.wav', '.mp3', '.aac')):
+            filename = secure_filename(file.filename)
+            save_path = os.path.join(app.config['UPLOAD_AUDIO_FOLDER'], filename)
+            file.save(save_path)
 
-    return render_template('result.html', video_url=video_path2, video_info=video_info)
-
-
-#audio
-
-@app.route('/classify-audio', methods=['POST'])
-def classify_audio_api():
-    file = request.files['video']
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
-    file.save(file_path)
-
-    result = classify_audio(file_path)
-    return jsonify(result)
+            result = classify_audio(save_path)
+            return render_template('audio_result.html', audio_url=save_path, detection=result)
+        else:
+            return "Unsupported audio type", 400
+    return render_template('upload_audio_form.html')
 
 if __name__ == '__main__':
     app.run(debug=True)

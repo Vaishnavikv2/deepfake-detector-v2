@@ -1,5 +1,7 @@
 # Ignore videos
 static/videos/
+static/images/
+static/audios/
 *.mp4
 
 # Ignore model weights
